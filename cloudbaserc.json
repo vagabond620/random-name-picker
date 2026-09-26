@@ -1,0 +1,8 @@
+{
+  "version": "2.0",
+  "envId": "homework-d5gx32rjsa9018eac",
+  "$schema": "https://framework-1258016615.tcloudbaseapp.com/schema/latest.json",
+  "cloudrun": {
+    "name": "name-picker"
+  }
+}

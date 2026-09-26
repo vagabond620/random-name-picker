@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>班级抽名</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+    background: #08080c;
+    color: #f5f5f7;
+    min-height: 100vh;
+    overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+  /* 极淡背景光 */
+  .bg-glow {
+    position: fixed; inset: 0; z-index: 0; pointer-events: none;
+    background: radial-gradient(ellipse 60% 45% at 50% 38%, rgba(212,180,106,.05), transparent 70%);
+  }
+
+  .container {
+    position: relative; z-index: 1;
+    max-width: 640px; margin: 0 auto; padding: 28px 24px 44px;
+    min-height: 100vh; display: flex; flex-direction: column;
+  }
+
+  /* 头部 */
+  .header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding-bottom: 20px; border-bottom: 1px solid rgba(255,255,255,.06);
+  }
+  .brand { display: flex; flex-direction: column; }
+  .brand-cn { font-size: 17px; font-weight: 500; letter-spacing: 6px; color: #f5f5f7; }
+  .brand-en { font-size: 10px; letter-spacing: 4px; color: #6b6b75; margin-top: 4px; text-transform: uppercase; }
+  .header-right { display: flex; align-items: center; gap: 14px; }
+  .cur-name {
+    font-size: 15px; color: #d4b46a; letter-spacing: 2px; font-weight: 400;
+    max-width: 160px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .cur-name.empty { color: #3f3f46; }
+  .ghost-btn {
+    background: none; border: 1px solid rgba(255,255,255,.14); color: #a1a1aa;
+    padding: 8px 16px; border-radius: 999px; cursor: pointer;
+    font-size: 13px; letter-spacing: 2px; transition: all .25s; white-space: nowrap;
+  }
+  .ghost-btn:hover { border-color: rgba(255,255,255,.4); color: #f5f5f7; }
+  .ghost-btn:active { transform: scale(.97); }
+
+  /* ============ 主体布局（默认单列，竖屏） ============ */
+  .main-layout { flex: 1; display: flex; flex-direction: column; }
+
+  /* 主舞台 */
+  .stage {
+    flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 48px 0 40px;
+  }
+  .stage-kicker {
+    font-size: 11px; letter-spacing: 6px; color: #5c5c66; text-transform: uppercase;
+    margin-bottom: 36px; user-select: none;
+  }
+  .name-display { min-height: 170px; display: flex; align-items: center; justify-content: center; width: 100%; }
+  .name-text {
+    font-size: 84px; font-weight: 200; text-align: center; line-height: 1.15;
+    color: #f5f5f7; letter-spacing: 8px; word-break: break-all; max-width: 92%;
+    transition: opacity .08s ease, transform .08s ease;
+  }
+  .name-text.rolling { opacity: .5; }
+  .name-text.winner {
+    opacity: 1; color: #f5f5f7; transform: scale(1);
+    animation: settle .7s cubic-bezier(.19,1,.22,1);
+    text-shadow: 0 0 40px rgba(212,180,106,.35), 0 0 120px rgba(212,180,106,.15);
+  }
+  @keyframes settle {
+    0% { opacity: 0; transform: scale(.82); filter: blur(8px); }
+    55% { opacity: 1; transform: scale(1.04); filter: blur(0); }
+    100% { transform: scale(1); }
+  }
+  .name-text.empty { font-size: 22px; font-weight: 300; color: #3f3f46; letter-spacing: 4px; }
+  .result-tag { margin-top: 28px; min-height: 22px; }
+  .result-tag span {
+    font-size: 13px; letter-spacing: 3px; color: #d4b46a;
+    animation: fadeUp .6s ease;
+  }
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+  /* 控制与信息（默认单列下顺序：开始→排除→统计→已抽中） */
+  .controls { display: flex; justify-content: center; margin-bottom: 34px; }
+  .btn-main {
+    background: none; border: 1px solid rgba(255,255,255,.22); color: #f5f5f7;
+    font-size: 16px; font-weight: 400; letter-spacing: 8px; text-indent: 8px;
+    padding: 18px 64px; border-radius: 999px; cursor: pointer;
+    transition: all .3s; position: relative; overflow: hidden;
+  }
+  .btn-main:hover:not(:disabled) { border-color: #d4b46a; color: #d4b46a; background: rgba(212,180,106,.04); }
+  .btn-main:active:not(:disabled) { transform: scale(.98); }
+  .btn-main:disabled { opacity: .35; cursor: wait; }
+
+  .options { display: flex; align-items: center; justify-content: center; gap: 18px; margin-bottom: 40px; }
+  .option-label { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #8b8b95; cursor: pointer; user-select: none; letter-spacing: 1px; }
+  .option-label input {
+    appearance: none; width: 16px; height: 16px; border: 1px solid rgba(255,255,255,.25);
+    border-radius: 4px; cursor: pointer; position: relative; transition: all .2s; background: transparent;
+  }
+  .option-label input:checked { background: #d4b46a; border-color: #d4b46a; }
+  .option-label input:checked::after {
+    content: ''; position: absolute; left: 4px; top: 1px; width: 5px; height: 9px;
+    border: solid #08080c; border-width: 0 2px 2px 0; transform: rotate(45deg);
+  }
+  .option-info { font-size: 12px; color: #55555f; letter-spacing: 1px; }
+
+  .stats {
+    display: flex; justify-content: center; align-items: baseline; gap: 12px;
+    margin-bottom: 36px; font-size: 12px; color: #55555f; letter-spacing: 2px;
+  }
+  .stats b { font-weight: 500; color: #a1a1aa; font-size: 14px; margin-right: 2px; }
+  .stats .sep { color: #2c2c33; }
+
+  .history-section { padding-top: 22px; border-top: 1px solid rgba(255,255,255,.06); }
+  .history-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+  .history-title { font-size: 11px; letter-spacing: 4px; color: #6b6b75; text-transform: uppercase; }
+  .history-clear { background: none; border: none; color: #55555f; font-size: 12px; cursor: pointer; letter-spacing: 2px; transition: color .2s; }
+  .history-clear:hover { color: #d4b46a; }
+  .history-list { display: flex; flex-wrap: wrap; gap: 8px; }
+  .history-item {
+    display: inline-flex; align-items: center; gap: 8px;
+    border: 1px solid rgba(212,180,106,.25); color: #d4b46a;
+    padding: 5px 12px; border-radius: 999px; font-size: 13px; letter-spacing: 1px;
+    animation: fadeIn .35s ease;
+  }
+  @keyframes fadeIn { from { opacity: 0; transform: scale(.9); } to { opacity: 1; transform: scale(1); } }
+  .history-item button {
+    background: none; border: none; color: #8b8b95; cursor: pointer; font-size: 13px;
+    padding: 0; line-height: 1; transition: color .2s;
+  }
+  .history-item button:hover { color: #f5f5f7; }
+  .history-empty { color: #2e2e35; font-size: 13px; letter-spacing: 1px; }
+
+  /* 名单区块（侧边栏） */
+  .names-section { margin-top: 18px; }
+  .names-title { font-size: 11px; letter-spacing: 4px; color: #6b6b75; text-transform: uppercase; margin-bottom: 12px; }
+  .names-grid { display: flex; flex-wrap: wrap; gap: 6px; }
+  .name-chip {
+    border: 1px solid rgba(255,255,255,.1); color: #a1a1aa;
+    padding: 3px 10px; border-radius: 999px; font-size: 12px; letter-spacing: 1px;
+  }
+  .name-chip.picked { border-color: rgba(212,180,106,.3); color: #d4b46a; }
+
+  /* 名单编辑弹窗 */
+  .modal-mask {
+    position: fixed; inset: 0; z-index: 100; background: rgba(0,0,0,.72);
+    display: flex; align-items: center; justify-content: center; padding: 20px;
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    animation: fadeIn .25s ease;
+  }
+  .modal {
+    background: #0e0e14; border: 1px solid rgba(255,255,255,.1); border-radius: 18px;
+    width: 100%; max-width: 480px; max-height: 85vh; display: flex; flex-direction: column;
+    box-shadow: 0 30px 80px rgba(0,0,0,.6); animation: slideUp .35s cubic-bezier(.19,1,.22,1);
+  }
+  @keyframes slideUp { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: translateY(0); } }
+  .modal-header {
+    padding: 20px 22px; border-bottom: 1px solid rgba(255,255,255,.07);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .modal-header h3 { font-size: 15px; font-weight: 500; letter-spacing: 3px; }
+  .modal-close { background: none; border: none; color: #6b6b75; font-size: 22px; cursor: pointer; line-height: 1; transition: color .2s; }
+  .modal-close:hover { color: #f5f5f7; }
+  .modal-body { padding: 18px 22px; overflow-y: auto; flex: 1; }
+  .modal-tip { font-size: 12px; color: #55555f; margin-bottom: 12px; line-height: 1.7; letter-spacing: .5px; }
+  .name-editor {
+    width: 100%; min-height: 220px; background: #08080c; border: 1px solid rgba(255,255,255,.1);
+    border-radius: 12px; color: #e4e4e7; padding: 14px; font-size: 14px; line-height: 1.9;
+    resize: vertical; outline: none; font-family: inherit; letter-spacing: .5px;
+    transition: border-color .2s;
+  }
+  .name-editor:focus { border-color: rgba(212,180,106,.5); }
+  .modal-footer { padding: 16px 22px; border-top: 1px solid rgba(255,255,255,.07); display: flex; gap: 10px; justify-content: flex-end; }
+  .modal-footer .ghost-btn { padding: 10px 22px; }
+
+  /* ========== 竖屏手机（窄） ========== */
+  @media (max-width: 480px) {
+    .container { padding: 20px 16px 36px; }
+    .name-text { font-size: 56px; letter-spacing: 4px; }
+    .name-display { min-height: 140px; }
+    .btn-main { padding: 16px 44px; letter-spacing: 6px; text-indent: 6px; font-size: 15px; }
+    .brand-cn { letter-spacing: 4px; }
+    .stage { padding: 40px 0 32px; }
+    .cur-name { display: none; }
+  }
+  @media (max-width: 360px) {
+    .name-text { font-size: 46px; }
+  }
+
+  /* ========== 横屏手机（矮而宽）— 单列紧凑 ========== */
+  @media (orientation: landscape) and (max-height: 560px) {
+    .container { padding: 12px 28px 16px; }
+    .header { padding-bottom: 10px; }
+    .stage { padding: 6px 0 8px; }
+    .stage-kicker { margin-bottom: 6px; font-size: 10px; }
+    .name-display { min-height: 84px; }
+    .name-text { font-size: 62px; letter-spacing: 8px; }
+    .name-text.empty { font-size: 20px; }
+    .result-tag { margin-top: 8px; min-height: 18px; }
+    .controls { margin-bottom: 10px; }
+    .btn-main { padding: 12px 52px; font-size: 15px; }
+    .options { margin-bottom: 10px; }
+    .stats { margin-bottom: 10px; }
+    .history-section { padding-top: 10px; }
+    .history-head { margin-bottom: 8px; }
+    .history-list { max-height: 54px; overflow-y: auto; }
+    .cur-name { display: none; }
+  }
+  @media (orientation: landscape) and (max-height: 380px) {
+    .container { padding: 8px 24px 12px; }
+    .stage-kicker { display: none; }
+    .name-display { min-height: 60px; }
+    .name-text { font-size: 48px; letter-spacing: 6px; }
+    .stage { padding: 4px 0; }
+    .btn-main { padding: 9px 40px; font-size: 14px; letter-spacing: 8px; text-indent: 8px; }
+    .controls { margin-bottom: 8px; }
+    .options { margin-bottom: 8px; }
+    .stats { margin-bottom: 8px; }
+    .history-list { max-height: 40px; }
+    .result-tag { margin-top: 6px; min-height: 16px; }
+  }
+
+  /* ========== 电脑 / 平板（宽且高）— 左右分栏，符合草图 ========== */
+  @media (min-width: 720px) and (min-height: 500px) {
+    .container { max-width: 1200px; padding: 32px 44px 44px; }
+    .header { padding-bottom: 24px; margin-bottom: 8px; }
+    .brand-cn { font-size: 22px; letter-spacing: 8px; }
+    .brand-en { font-size: 11px; letter-spacing: 5px; }
+    .ghost-btn { padding: 10px 24px; font-size: 14px; }
+
+    /* 左右分栏 */
+    .main-layout { flex-direction: row; align-items: stretch; gap: 48px; }
+    .left { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; }
+    .right { width: 340px; flex-shrink: 0; display: flex; flex-direction: column; gap: 22px; }
+
+    /* 左侧：超大抽名舞台 */
+    .left .stage { padding: 24px 0; }
+    .left .stage-kicker { font-size: 14px; letter-spacing: 10px; margin-bottom: 44px; }
+    .name-display { min-height: 320px; }
+    .name-text { font-size: 170px; letter-spacing: 20px; }
+    .name-text.empty { font-size: 28px; }
+    .result-tag span { font-size: 16px; letter-spacing: 5px; }
+
+    /* 右侧：竖线分隔的侧边栏（面板化） */
+    .right .panel {
+      background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.08);
+      border-radius: 16px; padding: 20px 22px;
+    }
+    .right .controls { justify-content: stretch; margin-bottom: 0; }
+    .right .btn-main { width: 100%; padding: 16px 0; font-size: 17px; letter-spacing: 10px; text-indent: 10px; }
+    .right .options { justify-content: flex-start; gap: 12px; margin-bottom: 0; padding: 14px 2px 4px; }
+    .right .option-label { font-size: 14px; }
+    .right .stats { justify-content: flex-start; margin-bottom: 0; padding: 0 2px; font-size: 13px; }
+    .right .stats b { font-size: 16px; }
+    .right .history-section { padding-top: 0; border-top: none; }
+    .right .history-title { font-size: 12px; margin-bottom: 14px; }
+    .right .history-list { max-height: 180px; overflow-y: auto; }
+    .right .names-grid { max-height: 120px; overflow-y: auto; }
+
+    .history-empty { padding: 8px 0; }
+  }
+</style>
+</head>
+<body>
+<div class="bg-glow"></div>
+
+<div class="container">
+  <!-- 顶部：网站名 + 名字 -->
+  <div class="header">
+    <div class="brand">
+      <div class="brand-cn">班级抽名</div>
+      <div class="brand-en">Class Picker</div>
+    </div>
+    <div class="header-right">
+      <span class="cur-name empty" id="headerName">—</span>
+      <button class="ghost-btn" onclick="openEditor()">名单</button>
+    </div>
+  </div>
+
+  <!-- 主体：默认单列；宽屏左右分栏 -->
+  <div class="main-layout">
+    <!-- 左：抽名舞台 -->
+    <div class="left">
+      <div class="stage">
+        <div class="stage-kicker">Random Pick</div>
+        <div class="name-display">
+          <div class="name-text empty" id="nameDisplay">点击开始抽名</div>
+        </div>
+        <div class="result-tag"><span id="resultTag"></span></div>
+      </div>
+    </div>
+
+    <!-- 右：侧边栏（开始 / 抽过的 / 名字） -->
+    <div class="right">
+      <div class="panel">
+        <div class="controls">
+          <button class="btn-main" id="startBtn" onclick="startRoll()">开始抽名</button>
+        </div>
+        <div class="options">
+          <label class="option-label">
+            <input type="checkbox" id="excludePicked" checked onchange="saveSettings()">
+            排除已抽中
+          </label>
+          <span class="option-info" id="remainInfo"></span>
+        </div>
+        <div class="stats">
+          <span>名单 <b id="totalCount">0</b></span>
+          <span class="sep">·</span>
+          <span>已抽 <b id="pickedCount">0</b></span>
+          <span class="sep">·</span>
+          <span>剩余 <b id="remainCount">0</b></span>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="history-head">
+          <div class="history-title">抽过的</div>
+          <button class="history-clear" onclick="resetHistory()">重置</button>
+        </div>
+        <div class="history-list" id="historyList"><div class="history-empty">— 暂无记录 —</div></div>
+      </div>
+
+      <div class="panel">
+        <div class="names-title">名单 · <span id="namesTitleCount">0</span>人</div>
+        <div class="names-grid" id="namesGrid"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 名单编辑弹窗 -->
+<div class="modal-mask" id="editorModal" style="display:none" onclick="if(event.target===this)closeEditor()">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>名单管理</h3>
+      <button class="modal-close" onclick="closeEditor()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-tip">每行一个名字。修改名单不会清除已抽中记录。</div>
+      <textarea class="name-editor" id="nameEditor" spellcheck="false"></textarea>
+    </div>
+    <div class="modal-footer">
+      <button class="ghost-btn" onclick="restoreDefault()">恢复默认</button>
+      <button class="ghost-btn" onclick="saveNames()" style="border-color:rgba(212,180,106,.4);color:#d4b46a">保存</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============ 默认名单（24人） ============
+const DEFAULT_NAMES = [
+  '张宇晨','李想','刘瑜佳','张鈴杰','陶楠','武志州','陈雅婷','李俊豪',
+  '孙景程','唐宇轩','李晋渝','田海涛','江梦琦','王涵宇','龙思琪','刘宇焓',
+  '殷正轩','龙军杰','易军岑','雷国涛','谢绍严','赵子洋','李鑫浩','左恒华'
+];
+
+// ============ 状态 ============
+let names = [];
+let picked = [];
+let rolling = false;
+let rollTimer = null;
+let excludePicked = true;
+
+// ============ 存储 ============
+const STORAGE_KEYS = {
+  names: 'rnp_names_v1',
+  picked: 'rnp_picked_v1',
+  settings: 'rnp_settings_v1',
+};
+
+function loadState() {
+  try {
+    names = JSON.parse(localStorage.getItem(STORAGE_KEYS.names)) || [...DEFAULT_NAMES];
+  } catch (e) { names = [...DEFAULT_NAMES]; }
+  if (!Array.isArray(names) || names.length === 0) names = [...DEFAULT_NAMES];
+  try {
+    picked = JSON.parse(localStorage.getItem(STORAGE_KEYS.picked)) || [];
+  } catch (e) { picked = []; }
+  if (!Array.isArray(picked)) picked = [];
+  try {
+    const s = JSON.parse(localStorage.getItem(STORAGE_KEYS.settings)) || {};
+    excludePicked = s.excludePicked !== false;
+  } catch (e) { excludePicked = true; }
+}
+
+function saveSettings() {
+  excludePicked = document.getElementById('excludePicked').checked;
+  localStorage.setItem(STORAGE_KEYS.settings, JSON.stringify({ excludePicked }));
+}
+
+function saveNames() {
+  names = document.getElementById('nameEditor').value
+    .split('\n').map(n => n.trim()).filter(n => n.length > 0);
+  names = [...new Set(names)];
+  localStorage.setItem(STORAGE_KEYS.names, JSON.stringify(names));
+  picked = picked.filter(n => names.includes(n));
+  localStorage.setItem(STORAGE_KEYS.picked, JSON.stringify(picked));
+  closeEditor();
+  render();
+}
+
+function savePicked() {
+  localStorage.setItem(STORAGE_KEYS.picked, JSON.stringify(picked));
+}
+
+function setHeaderName(text) {
+  const el = document.getElementById('headerName');
+  el.textContent = text || '—';
+  el.classList.toggle('empty', !text);
+}
+
+// ============ 渲染 ============
+function render() {
+  document.getElementById('totalCount').textContent = names.length;
+  document.getElementById('pickedCount').textContent = picked.length;
+  const remain = getAvailableNames();
+  document.getElementById('remainCount').textContent = remain.length;
+  document.getElementById('remainInfo').textContent = excludePicked
+    ? `剩余可抽 ${remain.length} 人`
+    : '允许重复抽取';
+  document.getElementById('namesTitleCount').textContent = names.length;
+
+  const list = document.getElementById('historyList');
+  if (picked.length === 0) {
+    list.innerHTML = '<div class="history-empty">— 暂无记录 —</div>';
+  } else {
+    list.innerHTML = picked.map(n => `
+      <div class="history-item">
+        ${n}
+        <button onclick="undoPick('${n.replace(/'/g, "\\'")}')" title="撤销">×</button>
+      </div>
+    `).join('');
+  }
+
+  // 名单 chips
+  const grid = document.getElementById('namesGrid');
+  grid.innerHTML = names.map(n => `
+    <span class="name-chip${picked.includes(n) ? ' picked' : ''}">${n}</span>
+  `).join('');
+}
+
+function getAvailableNames() {
+  return excludePicked ? names.filter(n => !picked.includes(n)) : names;
+}
+
+// ============ 抽名逻辑（点击一次，定格名字即结果） ============
+function startRoll() {
+  const available = getAvailableNames();
+  if (available.length === 0) {
+    alert('没有可抽的名字了！\n请重置已抽中名单，或关闭"排除已抽中"。');
+    return;
+  }
+  rolling = true;
+  const startBtn = document.getElementById('startBtn');
+  startBtn.disabled = true;
+  startBtn.textContent = '抽 名 中…';
+  document.getElementById('resultTag').innerHTML = '';
+  setHeaderName('');
+  const display = document.getElementById('nameDisplay');
+  display.classList.add('rolling');
+  display.classList.remove('empty', 'winner');
+
+  // 快速轮播约 1.4 秒
+  let count = 0;
+  rollTimer = setInterval(() => {
+    display.textContent = available[Math.floor(Math.random() * available.length)];
+    count++;
+    if (count >= 24) {
+      clearInterval(rollTimer);
+      // 减速阶段：间隔逐渐增大，最后一帧直接定格最终名字
+      let delay = 80;
+      const slowDown = () => {
+        delay += 70;
+        if (delay < 430) {
+          display.textContent = available[Math.floor(Math.random() * available.length)];
+          setTimeout(slowDown, delay);
+        } else {
+          const winner = available[Math.floor(Math.random() * available.length)];
+          display.textContent = winner;
+          stopRoll(winner);
+        }
+      };
+      setTimeout(slowDown, delay);
+    }
+  }, 60);
+}
+
+function stopRoll(winner) {
+  if (!rolling) return;
+  rolling = false;
+
+  const display = document.getElementById('nameDisplay');
+  display.classList.remove('rolling');
+  display.classList.remove('winner');
+  void display.offsetWidth;
+  display.classList.add('winner');
+
+  if (excludePicked && !picked.includes(winner)) {
+    picked.push(winner);
+    savePicked();
+  }
+
+  document.getElementById('resultTag').innerHTML = `<span>已抽取 · ${winner}</span>`;
+  setHeaderName(winner);
+  const startBtn = document.getElementById('startBtn');
+  startBtn.disabled = false;
+  startBtn.textContent = '开始抽名';
+  render();
+}
+
+// 撤销某次抽名
+function undoPick(name) {
+  picked = picked.filter(n => n !== name);
+  savePicked();
+  render();
+  const display = document.getElementById('nameDisplay');
+  display.textContent = '点击开始抽名';
+  display.classList.add('empty');
+  display.classList.remove('winner');
+  document.getElementById('resultTag').innerHTML = '';
+  setHeaderName('');
+}
+
+function resetHistory() {
+  if (picked.length === 0) return;
+  if (confirm('确定清除所有已抽中记录吗？')) {
+    picked = [];
+    savePicked();
+    render();
+    const display = document.getElementById('nameDisplay');
+    display.textContent = '点击开始抽名';
+    display.classList.add('empty');
+    display.classList.remove('winner');
+    document.getElementById('resultTag').innerHTML = '';
+    setHeaderName('');
+  }
+}
+
+// ============ 名单编辑 ============
+function openEditor() {
+  document.getElementById('nameEditor').value = names.join('\n');
+  document.getElementById('editorModal').style.display = 'flex';
+}
+
+function closeEditor() {
+  document.getElementById('editorModal').style.display = 'none';
+}
+
+function restoreDefault() {
+  if (confirm('恢复默认24人名单？')) {
+    document.getElementById('nameEditor').value = DEFAULT_NAMES.join('\n');
+  }
+}
+
+// ============ 键盘快捷键 ============
+document.addEventListener('keydown', (e) => {
+  if (e.code === 'Space' && document.getElementById('editorModal').style.display === 'none') {
+    e.preventDefault();
+    if (!rolling) startRoll();
+  }
+});
+
+// ============ 初始化 ============
+loadState();
+document.getElementById('excludePicked').checked = excludePicked;
+render();
+</script>
+</body>
+</html>

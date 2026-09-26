@@ -1,0 +1,12 @@
+{
+  "name": "random-name-picker",
+  "version": "1.0.0",
+  "description": "班级抽名网站 - 随机点名工具",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
